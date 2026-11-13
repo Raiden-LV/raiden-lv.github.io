@@ -77,6 +77,12 @@
     .pfp{top:3.5%;width:58px}
   }
 
+  /* view counter, top-left: eye + number */
+  .views{position:absolute;left:4%;top:4%;z-index:60;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;letter-spacing:.12em;
+    color:var(--bone);opacity:.85;font-variant-numeric:tabular-nums}
+  .views svg{width:16px;height:16px}
+  @media (max-width: 640px){ .views{top:3.5%;font-size:11px} }
+
   /* Discord pfp, top-right: just the avatar and what you're doing */
   .pfp{position:absolute;right:4%;top:5%;z-index:60;width:clamp(64px,6vw,84px);aspect-ratio:1;display:block}
   .pfp .av{position:absolute;inset:0;border-radius:50%;background:#000 center/cover;box-shadow:0 0 0 3px var(--black),0 0 0 5px var(--bone)}
@@ -105,6 +111,7 @@
     <div class="hint">DRAG OR USE THE ARROWS</div>
   </div>
 
+  <div class="views" title="Page views"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span id="views" aria-label="page views">&nbsp;</span></div>
   <a class="pfp" id="pfp" href="#" target="_blank" rel="noopener" aria-label="Discord profile">
     <div class="av" id="av"></div>
     <div class="act dot" id="act"></div>
@@ -133,8 +140,8 @@ const CARDS = [
    On phones the facts are shown together as one small row under the subtitle. */
 const NOTES = [
   /* in the red */
-  {type:"q", x:5,  y:9,  r:-4, text:"Paranoid anxiety,<br>prescriptions always fill my mouth.",
-     m:{x:5, y:6, r:-3}},
+  {type:"q", x:5,  y:10, r:-4, text:"Paranoid anxiety,<br>prescriptions always fill my mouth.",
+     m:{x:5, y:9, r:-3}},
   {type:"f", x:17, y:27, r:3,  label:"Fact 01", text:"Age 21"},
   {type:"f", x:6,  y:20, r:5,  right:true, label:"Fact 02", text:"From Latvia"},
   {type:"q", x:13, y:31, r:-3, right:true, text:"Life's simple: you make choices<br>and you don't look back."},
@@ -427,6 +434,21 @@ function activityImage(a){
   if (img.startsWith('spotify:')) return `https://i.scdn.co/image/${img.slice(8)}`;
   return `https://cdn.discordapp.com/app-assets/${a.application_id}/${img}.png`;
 }
+/* ---------- page views (free counter at abacus.jasoncameron.dev, no personal data sent) ----------
+   Counts once per browser session, so refreshing doesn't inflate the number. */
+async function loadViews(){
+  const base = 'https://abacus.jasoncameron.dev';
+  let counted = false;
+  try { counted = sessionStorage.getItem('kzr-viewed') === '1'; } catch(e){}
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') counted = true;   /* don't count local previews */
+  try{
+    const res = await fetch(`${base}/${counted ? 'get' : 'hit'}/raiden-lv-github-io/views`);
+    const { value } = await res.json();
+    if (typeof value === 'number') document.getElementById('views').textContent = value.toLocaleString('en-GB');
+    if (!counted){ try { sessionStorage.setItem('kzr-viewed', '1'); } catch(e){} }
+  }catch(e){ document.querySelector('.views').style.display = 'none'; }
+}
+
 async function loadProfile(first){
   try{
     const { data } = await (await fetch(`https://api.lanyard.rest/v1/users/${DISCORD_ID}`)).json();
@@ -455,7 +477,7 @@ function layout(){
 (async ()=>{
   await Promise.all([document.fonts.load('900 100px Figtree'), document.fonts.load('700 10px Figtree'), document.fonts.load('48px "tabler-icons"'), loadAssets(), kanekiReady]);
   await document.fonts.ready;
-  layout(); loadProfile(true); setInterval(()=>loadProfile(false), 30000);
+  layout(); loadViews(); loadProfile(true); setInterval(()=>loadProfile(false), 30000);
   let rt; addEventListener('resize', ()=>{ clearTimeout(rt); rt = setTimeout(layout, 150); });
 })();
 </script>
