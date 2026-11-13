@@ -1,107 +1,434 @@
 ---
-import Base from "../layouts/Base.astro";
-import LinkButton from "../components/LinkButton.astro";
-import DiscordStatus from "../components/DiscordStatus.astro";
-import { profile } from "../data/profile";
-
-// Prefix local asset paths with the base path so they work on GitHub Pages project sites.
-const asset = (p: string) =>
-  p.startsWith("/") ? `${import.meta.env.BASE_URL.replace(/\/$/, "")}${p}` : p;
+// KZR profile page. Built from the approved mock (mocks/v13.html).
+// Edit CARDS (links) and NOTES (quotes + facts) near the top of the script below.
 ---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KZR</title>
+    <meta name="description" content="KZR: also Suki, Minky and Pudding. Links, socials and a few things about me." />
+    <meta property="og:title" content="KZR" />
+    <meta property="og:description" content="Links, socials and a few things about me." />
+    <meta name="theme-color" content="#6E1F22" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;700;900&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+    <style is:global>
+  :root{ --red:#6E1F22; --black:#0A0A0B; --bone:#F2EEE8; --hot:#DE3E42; --cut:40%; }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:Figtree,system-ui,sans-serif;background:var(--black);color:var(--bone);overflow:hidden}
+  #page{position:relative;height:100vh;min-height:620px;overflow:hidden;user-select:none;
+    /* grainy red on top, hard cut to black */
+    background:linear-gradient(to bottom, var(--red) 0 var(--cut), var(--black) var(--cut) 100%)}
+  .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
-<Base title={profile.name} description={profile.tagline}>
-  <main>
-    <header>
-      <img src={asset(profile.avatar)} alt="" width="96" height="96" class="avatar" />
-      <div>
-        <h1>{profile.name}</h1>
-        <p class="handle">{profile.handle}</p>
-      </div>
-      <p class="tagline">{profile.tagline}</p>
-      <DiscordStatus userId={profile.discordId} />
-    </header>
+  /* the whole hero (red/black, KZR, Kaneki, outline KZR, grain) is painted ONCE into this canvas.
+     Nothing in it is blended live, so spinning the cards only has to redraw the card canvas. */
+  #hero{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
 
-    <section aria-labelledby="now">
-      <h2 id="now">Now</h2>
-      <ul class="now">
-        {profile.now.map((item) => <li>{item}</li>)}
-      </ul>
-    </section>
+  #deck{position:absolute;left:0;width:100%;z-index:10;cursor:default;touch-action:pan-y}
+  #deck.dragging{cursor:grabbing}
 
-    <section aria-labelledby="about">
-      <h2 id="about">About</h2>
-      <p>{profile.about}</p>
-    </section>
+  .ctrl{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;align-items:center;gap:10px}
+  .ctrl .name{font-weight:900;font-size:clamp(15px,1.4vw,20px);letter-spacing:.06em}
+  .navs{display:flex;gap:30px}
+  /* clear "liquid glass" buttons: no outline, depth from soft inner highlights,
+     the icon casts a soft shadow down into the glass */
+  .nav{position:relative;width:54px;height:54px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;color:#F2EEE8;
+    /* clear glass: barely tinted, you see the page straight through it */
+    background:linear-gradient(180deg,rgba(255,255,255,.10) 0%,rgba(255,255,255,.03) 55%,rgba(255,255,255,.06) 100%);
+    border:0;isolation:isolate;
+    box-shadow:
+      inset 0 2px 3px rgba(255,255,255,.55),          /* light catching the top */
+      inset 0 -3px 6px rgba(255,255,255,.22),         /* light bouncing off the bottom inside */
+      inset 0 0 12px rgba(255,255,255,.06),           /* faint thickness glow */
+      0 8px 22px rgba(0,0,0,.4);
+    transition:transform .18s cubic-bezier(.3,.7,.4,1.4),background .25s}
+  .nav svg{width:16px;height:16px;position:relative;z-index:1;filter:drop-shadow(0 3px 2.5px rgba(0,0,0,.45))}
+  /* hover: a small pop and a whisper more glass; press: quick squeeze */
+  .nav:hover{transform:scale(1.08);background:linear-gradient(180deg,rgba(255,255,255,.15) 0%,rgba(255,255,255,.05) 55%,rgba(255,255,255,.09) 100%)}
+  .nav:active{transform:scale(.94)}
+  .nav:focus-visible{outline:2px solid var(--bone);outline-offset:4px}
+  .hint{font-size:10px;letter-spacing:.16em;opacity:.55}
 
-    <nav aria-label="Links">
-      {profile.links.map((l) => <LinkButton {...l} />)}
-    </nav>
+  /* scattered notes: quotes in a soft italic serif, facts in tiny spaced caps. Static, so they cost nothing. */
+  #notes{position:absolute;inset:0;z-index:3;pointer-events:none}
+  .note{position:absolute;max-width:210px;color:var(--bone);transform:rotate(var(--r));transform-origin:left top}
+  .note.q{font-family:"Instrument Serif",Georgia,serif;font-style:italic;font-size:16px;line-height:1.12;opacity:.88}
+  .note.q cite{display:block;margin-top:5px;font-family:Figtree,sans-serif;font-style:normal;font-size:8.5px;font-weight:700;letter-spacing:.22em;opacity:.6}
+  .note.f{font-size:9.5px;font-weight:700;letter-spacing:.16em;line-height:1.45;text-transform:uppercase;opacity:.75}
+  .note.f b{display:block;font-size:8px;letter-spacing:.24em;opacity:.55;margin-bottom:2px}
+  .note.r{text-align:right;transform-origin:right top}
 
-    <footer>© {new Date().getFullYear()} {profile.name}</footer>
-  </main>
-</Base>
-
-<style>
-  main {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: var(--space-12) var(--space-4);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-8);
-  }
-  header {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-4);
-  }
-  .avatar {
-    border-radius: 50%;
-    border: 2px solid var(--border);
-  }
-  h1 {
-    font-size: var(--text-xl);
-    line-height: 1.1;
-    letter-spacing: -0.02em;
-  }
-  .handle {
-    font-family: var(--font-mono);
-    color: var(--muted);
-    font-size: var(--text-sm);
-  }
-  .tagline {
-    font-size: var(--text-lg);
-  }
-  h2 {
-    font-size: var(--text-sm);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--accent);
-    margin-bottom: var(--space-2);
-  }
-  section p {
-    color: var(--muted);
-  }
-  .now {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    display: grid;
-    gap: var(--space-1);
-    color: var(--muted);
-  }
-  .now li::before {
-    content: "→ ";
-    color: var(--accent);
-  }
-  nav {
-    display: grid;
-    gap: var(--space-2);
-  }
-  footer {
-    color: var(--muted);
-    font-size: var(--text-sm);
-    text-align: center;
-  }
+  /* Discord pfp, top-right: just the avatar and what you're doing */
+  .pfp{position:absolute;right:4%;top:5%;z-index:60;width:clamp(64px,6vw,84px);aspect-ratio:1;display:block}
+  .pfp .av{position:absolute;inset:0;border-radius:50%;background:#000 center/cover;box-shadow:0 0 0 3px var(--black),0 0 0 5px var(--bone)}
+  .pfp .act{position:absolute;right:-6%;bottom:-6%;width:40%;aspect-ratio:1;border-radius:30%;background:#80848e center/cover;
+    box-shadow:0 0 0 3px var(--red);display:flex;align-items:center;justify-content:center}
+  .pfp .act.dot{border-radius:50%;width:26%;right:2%;bottom:2%}
+  .pfp .tip{position:absolute;right:0;top:calc(100% + 14px);white-space:nowrap;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;opacity:.85;text-align:right}
 </style>
+  </head>
+  <body>
+<section id="page">
+  <canvas id="hero" aria-hidden="true"></canvas>
+  <div id="notes"></div>
+  <h1 class="sr-only">KZR, also Suki, Minky and Pudding</h1>
+
+  <canvas id="deck" aria-hidden="true"></canvas>
+  <nav class="sr-only" id="links" aria-label="Links"></nav>
+  <div class="ctrl">
+    <div class="name" id="activeName">DISCORD</div>
+    <div class="navs">
+      <!-- triangles placed by their visual centre (centroid), not their bounding box, so they look centred -->
+      <button class="nav" id="prev" aria-label="Previous card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.3 6.3 L5.3 12 L15.3 17.7 Z" fill="currentColor" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></svg></button>
+      <button class="nav" id="next" aria-label="Next card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.7 6.3 L18.7 12 L8.7 17.7 Z" fill="currentColor" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></svg></button>
+    </div>
+    <div class="hint">DRAG OR USE THE ARROWS</div>
+  </div>
+
+  <a class="pfp" id="pfp" href="#" target="_blank" rel="noopener" aria-label="Discord profile">
+    <div class="av" id="av"></div>
+    <div class="act dot" id="act"></div>
+    <div class="tip" id="tip"></div>
+  </a>
+</section>
+<img id="gif" alt="" style="position:absolute;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none">
+
+<script is:inline>
+/* ======================= content you can edit ======================= */
+const DISCORD_ID = "814144316548317255";
+const CARDS = [
+  {name:"Discord",     icon:"discord",     skin:"crimson", href:`https://discord.com/users/${DISCORD_ID}`},
+  {name:"Steam",       icon:"steam",       skin:"ink",     href:"https://steamcommunity.com/id/Suki1030/"},
+  {name:"X",           icon:"x",           skin:"bone",    href:"https://x.com/Kzrsuki"},
+  {name:"Me",          photo:true,         skin:"ink"},
+  {name:"MyAnimeList", icon:"myanimelist", skin:"crimson", href:"https://myanimelist.net/profile/Kz-r"},
+  {name:"Spotify",     icon:"spotify",     skin:"bone",    href:"https://open.spotify.com/user/dzy2tdafii0rbwsfco0givq7v"},
+  {name:"kova.page",   glyph:"ti-crosshair", skin:"ink",   href:"https://kova.page/kzr"},
+  {name:"Latvija",     pattern:"/latvian-pattern.webp", skin:"latvia"},
+];
+
+/* scattered notes: quotes and facts.
+   type q = quote, f = fact. x/y are % of the screen; right:true anchors to the right edge. r = rotation in degrees. */
+const NOTES = [
+  /* in the red */
+  {type:"q", x:5,  y:9,  r:-4, text:"Paranoid anxiety,<br>prescriptions always fill my mouth."},
+  {type:"f", x:17, y:27, r:3,  label:"Fact 01", text:"Age 21"},
+  {type:"f", x:6,  y:20, r:5,  right:true, label:"Fact 02", text:"From Latvia"},
+  {type:"q", x:13, y:31, r:-3, right:true, text:"Life's simple: you make choices<br>and you don't look back."},
+  /* in the black, either side of the cards */
+  {type:"q", x:4,  y:50, r:5,  text:"The only person<br>that's got you is you."},
+  {type:"f", x:7,  y:67, r:-5, label:"Fact 03", text:"Lives in England"},
+  {type:"q", x:3,  y:84, r:3,  text:"Life is a matter of perception,<br>life is what you make it."},
+  {type:"f", x:5,  y:50, r:-6, right:true, label:"Fact 04", text:"Software developer"},
+  {type:"q", x:4,  y:66, r:4,  right:true, text:"Then you put the pain in my chest<br>just like second hand smoke."},
+  {type:"f", x:6,  y:85, r:-3, right:true, label:"Fact 05", text:"He / him"},
+];
+/* =================================================================== */
+document.getElementById('notes').innerHTML = NOTES.map(n=>{
+  const pos = `${n.right ? 'right' : 'left'}:${n.x}%;top:${n.y}%;--r:${n.r}deg`;
+  const cls = `note ${n.type}${n.right ? ' r' : ''}`;
+  return n.type === 'q'
+    ? `<blockquote class="${cls}" style="${pos};margin:0">“${n.text}”${n.by ? `<cite>— ${n.by.toUpperCase()}</cite>` : ''}</blockquote>`
+    : `<div class="${cls}" style="${pos}"><b>${n.label}</b>${n.text}</div>`;
+}).join('');
+
+const C = {ink:"#0A0A0B", bone:"#F2EEE8", red:"#6E1F22", hot:"#DE3E42"};
+const SKIN = {           /* top, bottom, ink, edge */
+  crimson:["#C42C33","#7A1A1F","#F2EEE8","#3E0C0F"],
+  ink:    ["#2A2B30","#111114","#F2EEE8","#000000"],
+  bone:   ["#F4F1EB","#D3CDC2","#0A0A0B","#8F897E"],
+  latvia: ["#8E1B2B","#6A1220","#F2EEE8","#3A0A12"],
+};
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const NC = CARDS.length, RING = CARDS.concat(CARDS), N = RING.length;
+const page = document.getElementById('page');
+const deck = document.getElementById('deck'), dctx = deck.getContext('2d');
+const activeName = document.getElementById('activeName');
+const prevBtn = document.getElementById('prev'), nextBtn = document.getElementById('next');
+const gifImg = document.getElementById('gif');
+let gifReady = false, W, H, DPR;
+document.getElementById('links').innerHTML = CARDS.filter(c=>c.href && c.href !== '#').map(c=>`<a href="${c.href}" target="_blank" rel="noopener">${c.name}</a>`).join('');
+
+/* ---------- hero: painted once into a single canvas (and again only on resize) ---------- */
+const grainTile = (()=>{
+  const t = document.createElement('canvas'); t.width = t.height = 180;
+  const c = t.getContext('2d'), d = c.createImageData(180,180);
+  for (let i=0;i<d.data.length;i+=4){ const v = Math.random()*255; d.data[i]=d.data[i+1]=d.data[i+2]=v; d.data[i+3]=255; }
+  c.putImageData(d,0,0); return t;
+})();
+const kaneki = new Image(); kaneki.src = '/kaneki-portrait.png';
+const kanekiReady = new Promise(r=>{ kaneki.onload = r; kaneki.onerror = r; });
+const SUB = 'SUKI · MINKY · PUDDING';
+function paintHero(){
+  const hero = document.getElementById('hero'), dpr = Math.min(devicePixelRatio||1, 1.5);
+  hero.width = Math.round(W*dpr); hero.height = Math.round(H*dpr);
+  const c = hero.getContext('2d'); c.setTransform(dpr,0,0,dpr,0,0);
+  const cut = H*0.40;
+  /* red top, hard cut to black */
+  c.fillStyle = C.red; c.fillRect(0,0,W,cut); c.fillStyle = C.ink; c.fillRect(0,cut,W,H-cut);
+
+  /* type metrics (same proportions as before: big KZR centred on the cut, subtitle underneath) */
+  const fs = Math.max(110, Math.min(H*0.25, 300)), subFs = Math.max(11, Math.min(W*0.011, 14));
+  const blockH = fs*0.8 + 14 + subFs*1.25, top = cut - blockH*0.58;
+  c.font = `900 ${fs}px Figtree`; c.letterSpacing = `${fs*0.02}px`; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  const m = c.measureText('KZR'), capH = m.actualBoundingBoxAscent;
+  const kx = W/2 + fs*0.01, ky = top + fs*0.4 + capH/2;
+  const drawKZR = (outline) => {
+    c.font = `900 ${fs}px Figtree`; c.letterSpacing = `${fs*0.02}px`; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+    if (outline){ c.lineWidth = 2; c.strokeStyle = C.bone; c.strokeText('KZR', kx, ky); }
+    else { c.fillStyle = C.bone; c.fillText('KZR', kx, ky); }
+  };
+
+  /* 1. solid KZR behind Kaneki */
+  drawKZR(false);
+  /* 2. Kaneki, with a hairline dark edge and soft shadow so his head separates from the red */
+  if (kaneki.naturalWidth){
+    const h = H*0.78, w = h*kaneki.naturalWidth/kaneki.naturalHeight;
+    c.save(); c.filter = 'drop-shadow(0 0 1.5px rgba(10,10,11,.9)) drop-shadow(0 18px 40px rgba(0,0,0,.45))';
+    c.drawImage(kaneki, W/2 - w/2, -H*0.03, w, h); c.restore();
+  }
+  /* 3. outline KZR in front: where he crosses the letters they read as outline */
+  drawKZR(true);
+  /* 4. subtitle */
+  c.font = `700 ${subFs}px Figtree`; c.letterSpacing = `${subFs*0.5}px`; c.fillStyle = C.bone; c.globalAlpha = .85;
+  c.textBaseline = 'top'; c.fillText(SUB, W/2 + subFs*0.25, top + fs*0.8 + 14); c.globalAlpha = 1;
+  /* 5. grain, baked in */
+  c.setTransform(1,0,0,1,0,0);
+  c.globalCompositeOperation = 'overlay'; c.globalAlpha = .28;
+  c.fillStyle = c.createPattern(grainTile, 'repeat'); c.fillRect(0,0,hero.width,hero.height);
+  c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
+}
+
+/* ---------- icons + pattern ---------- */
+const ICONS = {}, IMAGES = {};
+async function loadAssets(){
+  const slugs = [...new Set(CARDS.filter(c=>c.icon).map(c=>c.icon))];
+  const icons = slugs.map(async s=>{
+    try{ const txt = await (await fetch(`https://cdn.jsdelivr.net/npm/simple-icons@13.21.0/icons/${s}.svg`)).text();
+      const d = txt.match(/ d="([^"]+)"/); if (d) ICONS[s] = new Path2D(d[1]); }catch(e){}
+  });
+  const imgs = CARDS.filter(c=>c.pattern).map(c=>new Promise(res=>{ const im = new Image(); im.onload = ()=>{ IMAGES[c.pattern] = im; res(); }; im.onerror = res; im.src = c.pattern; }));
+  await Promise.all([...icons, ...imgs]);
+}
+const glyphCache = {};
+function glyph(cls){
+  if (glyphCache[cls]) return glyphCache[cls];
+  const i = document.createElement('i'); i.className = 'ti '+cls; i.style.position='absolute'; i.style.opacity='0';
+  document.body.appendChild(i); const g = getComputedStyle(i,'::before').content.replace(/^["']|["']$/g,''); i.remove();
+  return glyphCache[cls] = g;
+}
+
+/* ---------- card sprites (drawn once each) ---------- */
+let cx, cy, R, cw, ch, step, deckTop, PAD = 40;
+function rr(c,x,y,w,h,r){ c.beginPath(); c.roundRect(x,y,w,h,r); }
+function drawBody(c, card){
+  const [top,bot,,edge] = SKIN[card.skin];
+  const r = cw*0.09, x = PAD, y = PAD;
+  c.save(); c.shadowColor='rgba(0,0,0,.6)'; c.shadowBlur=28; c.shadowOffsetY=18; c.fillStyle = edge; rr(c,x,y+4,cw,ch,r); c.fill(); c.restore();
+  c.fillStyle = edge; rr(c,x,y+4,cw,ch,r); c.fill();
+  const g = c.createLinearGradient(x,y,x+cw*0.6,y+ch); g.addColorStop(0,top); g.addColorStop(1,bot);
+  c.fillStyle = g; rr(c,x,y,cw,ch,r); c.fill();
+  if (card.pattern && IMAGES[card.pattern]){
+    const im = IMAGES[card.pattern], sc = Math.max(cw/im.width, ch/im.height)*1.15;
+    c.save(); rr(c,x,y,cw,ch,r); c.clip(); c.drawImage(im, x+cw/2-im.width*sc/2, y+ch/2-im.height*sc/2, im.width*sc, im.height*sc); c.restore();
+  }
+}
+function drawOverlay(c, card, i){
+  const [,,ink] = SKIN[card.skin];
+  const r = cw*0.09, x = PAD, y = PAD, mx = x+cw/2, my = y+ch/2;
+  c.save(); rr(c,x,y,cw,ch,r); c.clip();
+  c.save(); c.shadowColor='rgba(0,0,0,.3)'; c.shadowBlur=10; c.shadowOffsetY=5;
+  if (card.icon && ICONS[card.icon]){
+    const s = cw*0.5/24; c.fillStyle = ink; c.translate(mx-12*s, my-12*s); c.scale(s,s); c.fill(ICONS[card.icon]);
+  } else if (card.glyph){
+    c.fillStyle = ink; c.font = `${Math.round(cw*0.5)}px "tabler-icons"`; c.textAlign='center'; c.textBaseline='middle';
+    c.fillText(glyph(card.glyph), mx, my - ch*0.04);
+    c.font = `900 ${Math.round(cw*0.11)}px Figtree`; c.fillText('kova.page', mx, my + ch*0.26);
+  }
+  c.restore();
+  let g = c.createLinearGradient(x,y,x+cw*0.55,y+ch*0.55);
+  g.addColorStop(0,'rgba(255,255,255,.3)'); g.addColorStop(.45,'rgba(255,255,255,.06)'); g.addColorStop(.8,'rgba(255,255,255,0)');
+  c.fillStyle = g; c.fillRect(x,y,cw,ch);
+  g = c.createLinearGradient(0,y+ch*0.55,0,y+ch); g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,.3)');
+  c.fillStyle = g; c.fillRect(x,y,cw,ch);
+  c.font = '700 10px Figtree'; c.letterSpacing = '1.4px'; c.textBaseline='top'; c.textAlign='left';
+  const label = card.name.toUpperCase();
+  if (card.photo || card.pattern){ const lw = c.measureText(label).width; c.fillStyle='rgba(10,10,11,.75)'; rr(c,x+7,y+7,lw+12,18,6); c.fill(); }
+  c.fillStyle = (card.photo || card.pattern) ? C.bone : ink; c.fillText(label, x+13, y+11.5);
+  c.globalAlpha=.7; c.textBaseline='bottom'; c.textAlign='right'; c.fillText(`${String(i+1).padStart(2,'0')} / ${NC}`, x+cw-12, y+ch-10);
+  c.restore();
+  c.lineWidth = 1; c.strokeStyle='rgba(255,255,255,.14)'; rr(c,x+.5,y+.5,cw-1,ch-1,r); c.stroke();
+  c.strokeStyle='rgba(255,255,255,.35)'; c.beginPath(); c.moveTo(x+r,y+.5); c.lineTo(x+cw-r,y+.5); c.stroke();
+}
+let sprites = [];
+function buildSprites(){
+  sprites = CARDS.map((card,i)=>{
+    const make = () => { const cv = document.createElement('canvas'); cv.width = Math.ceil((cw+PAD*2)*DPR); cv.height = Math.ceil((ch+PAD*2+6)*DPR);
+      const c = cv.getContext('2d'); c.scale(DPR,DPR); return [cv,c]; };
+    if (card.photo){ const [b,bc] = make(); drawBody(bc,card); const [o,oc] = make(); drawOverlay(oc,card,i); return {base:b, over:o}; }
+    const [s,sc] = make(); drawBody(sc,card); drawOverlay(sc,card,i); return {base:s};
+  });
+}
+
+/* ---------- ring in the black, under KZR ---------- */
+function layoutRing(){
+  ch = Math.min(H*0.25, 280, W*0.42); cw = ch*0.72;
+  cx = W/2; cy = H*1.1; R = H*0.42;
+  step = (cw*0.86)/R;
+  deckTop = Math.max(0, cy - R - ch*0.8 - 30);
+  deck.style.top = deckTop+'px'; deck.style.height = (H - deckTop)+'px';
+  deck.width = Math.round(W*DPR); deck.height = Math.round((H - deckTop)*DPR);
+}
+
+/* ---------- idle wave (soft): left-most card first, hold 3s, glide back ---------- */
+const WAVE = { amount: 0.14, stagger: 0.09, outDur: 1.15, backDur: 0.95 };
+let wave = { dir: 0, start: 0, held: false };
+const easeSine = t => -(Math.cos(Math.PI*t) - 1)/2;
+function waveShift(rel, now){
+  if (!wave.dir) return wave.held ? WAVE.amount : 0;
+  const t = (now - wave.start)/1000 - (rel + N/2)*WAVE.stagger;
+  const p = easeSine(Math.min(1, Math.max(0, t/(wave.dir > 0 ? WAVE.outDur : WAVE.backDur))));
+  return wave.dir > 0 ? WAVE.amount*p : WAVE.amount*(1-p);
+}
+function waveDone(now){ return (now - wave.start)/1000 > N*WAVE.stagger + Math.max(WAVE.outDur, WAVE.backDur); }
+function stopWave(){ wave = { dir: 0, held: false }; }
+function runWave(dir){
+  if (reduce || drag || Math.abs(target - offset) > 0.001){ if (dir < 0) stopWave(); return false; }
+  wave = { dir, start: performance.now(), held: dir < 0 }; kick(); return true;
+}
+(function waveLoop(){
+  const outTotal = (N*WAVE.stagger + WAVE.outDur)*1000, backTotal = (N*WAVE.stagger + WAVE.backDur)*1000;
+  setTimeout(()=>{
+    if (runWave(1)) setTimeout(()=>{ runWave(-1); setTimeout(waveLoop, backTotal); }, outTotal + 3000);
+    else waveLoop();
+  }, 3000);
+})();
+
+let offset = 0, target = 0, currentActive = -1, drag = null, running = false, poses = [];
+const mod = (a,n)=>((a%n)+n)%n;
+function computePoses(now){
+  poses = [];
+  for (let i=0;i<N;i++){
+    const rel = mod(i - offset + N/2, N) - N/2;
+    const th = (rel + waveShift(rel, now))*step;
+    const act = Math.max(0, 1 - Math.abs(rel)), r = R + act*18;
+    const x = cx + r*Math.sin(th), y = cy - r*Math.cos(th);
+    if (y - ch/2 > H + 10 || Math.abs(th) > 1.9) continue;
+    poses.push({i, card: i % NC, rel, th, x, y, s: 1 + act*0.08});
+  }
+  poses.sort((a,b)=>Math.abs(b.rel)-Math.abs(a.rel));
+}
+function drawDeck(){
+  dctx.setTransform(1,0,0,1,0,0); dctx.clearRect(0,0,deck.width,deck.height);
+  const sw = cw + PAD*2, sh = ch + PAD*2 + 6;
+  for (const p of poses){
+    const sp = sprites[p.card];
+    dctx.setTransform(DPR,0,0,DPR,0,0);
+    dctx.translate(p.x, p.y - deckTop); dctx.rotate(p.th); dctx.scale(p.s, p.s);
+    dctx.drawImage(sp.base, -sw/2, -sh/2 + 3, sw, sh);
+    if (sp.over){
+      if (gifReady){
+        dctx.save(); rr(dctx, -cw/2, -ch/2, cw, ch, cw*0.09); dctx.clip();
+        const iw = gifImg.naturalWidth, ih = gifImg.naturalHeight, sc = Math.max(cw/iw, ch/ih);
+        dctx.drawImage(gifImg, -iw*sc/2, -ih*sc/2, iw*sc, ih*sc); dctx.restore();
+      }
+      dctx.drawImage(sp.over, -sw/2, -sh/2 + 3, sw, sh);
+    }
+  }
+}
+function renderRing(now){
+  const diff = target - offset;
+  offset = (reduce || Math.abs(diff) < 0.001) ? target : offset + diff*0.14;
+  computePoses(now); drawDeck();
+  const front = poses[poses.length-1];
+  if (front && front.card !== currentActive){ currentActive = front.card; activeName.textContent = CARDS[front.card].name.toUpperCase(); }
+  if (wave.dir && waveDone(now)) wave = { dir: 0, held: wave.dir > 0 };
+  return offset === target && !wave.dir;
+}
+function kick(){ if (!running){ running = true; requestAnimationFrame(frame); } }
+function frame(now){ const settled = renderRing(now); if (settled && !drag){ running = false; return; } requestAnimationFrame(frame); }
+setInterval(()=>{ if (!running && gifReady && poses.some(p=>CARDS[p.card].photo)) drawDeck(); }, 83);
+
+function cardAt(px, py){
+  for (let k=poses.length-1;k>=0;k--){
+    const p = poses[k], dx = px - p.x, dy = py - p.y;
+    const lx = ( dx*Math.cos(p.th) + dy*Math.sin(p.th))/p.s, ly = (-dx*Math.sin(p.th) + dy*Math.cos(p.th))/p.s;
+    if (Math.abs(lx) <= cw/2 && Math.abs(ly) <= ch/2) return p;
+  }
+  return null;
+}
+let moved = false;
+deck.addEventListener('pointerdown', e=>{
+  if (!cardAt(e.clientX, e.clientY)) return;
+  stopWave(); drag = {x:e.clientX, start:target}; moved = false; deck.setPointerCapture(e.pointerId); kick();
+});
+deck.addEventListener('pointermove', e=>{
+  if (!drag){ deck.style.cursor = cardAt(e.clientX, e.clientY) ? 'grab' : 'default'; return; }
+  const dx = e.clientX - drag.x;
+  if (Math.abs(dx) > 5 && !moved){ moved = true; deck.classList.add('dragging'); }
+  target = drag.start - dx/(R*step);
+});
+deck.addEventListener('pointerup', e=>{
+  if (!drag) return;
+  drag = null; target = Math.round(target); deck.classList.remove('dragging');
+  if (!moved){
+    const p = cardAt(e.clientX, e.clientY);
+    if (p){
+      if (Math.abs(p.rel) > 0.5) target = Math.round(offset + p.rel);
+      else { const h = CARDS[p.card].href; if (h && h !== '#') window.open(h, '_blank', 'noopener'); }
+    }
+  }
+  kick();
+});
+prevBtn.onclick = ()=>{ stopWave(); target = Math.round(target) - 1; kick(); };
+nextBtn.onclick = ()=>{ stopWave(); target = Math.round(target) + 1; kick(); };
+addEventListener('keydown', e=>{ if (e.key==='ArrowLeft') prevBtn.click(); if (e.key==='ArrowRight') nextBtn.click(); });
+
+/* ---------- Discord pfp + activity icon (Lanyard), refreshed every 30s ---------- */
+const STATUS = { online:'#23a55a', idle:'#f0b232', dnd:'#f23f43', offline:'#80848e' };
+function activityImage(a){
+  const img = a.assets && (a.assets.large_image || a.assets.small_image);
+  if (!img) return null;
+  if (img.startsWith('mp:external/')) return `https://media.discordapp.net/external/${img.slice(12)}`;
+  if (img.startsWith('spotify:')) return `https://i.scdn.co/image/${img.slice(8)}`;
+  return `https://cdn.discordapp.com/app-assets/${a.application_id}/${img}.png`;
+}
+async function loadProfile(first){
+  try{
+    const { data } = await (await fetch(`https://api.lanyard.rest/v1/users/${DISCORD_ID}`)).json();
+    const u = data.discord_user;
+    document.getElementById('pfp').href = `https://discord.com/users/${u.id}`;
+    const act = document.getElementById('act'), tip = document.getElementById('tip');
+    const a = (data.activities||[]).find(x=>x.type !== 4);     /* skip custom status text */
+    const art = data.listening_to_spotify && data.spotify ? data.spotify.album_art_url : (a ? activityImage(a) : null);
+    if (art){ act.classList.remove('dot'); act.style.backgroundImage = `url(${art})`; act.style.backgroundColor = '#111'; }
+    else { act.classList.add('dot'); act.style.backgroundImage = 'none'; act.style.backgroundColor = STATUS[data.discord_status] || STATUS.offline; }
+    tip.textContent = data.listening_to_spotify && data.spotify ? `Listening to ${data.spotify.song}` : a ? `Playing ${a.name}` : '';
+    if (first && u.avatar){
+      const base = `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}`;
+      const anim = u.avatar.startsWith('a_') ? `${base}.gif?size=256` : `${base}.png?size=256`;
+      document.getElementById('av').style.backgroundImage = `url(${anim})`;
+      gifImg.onload = ()=>{ gifReady = true; drawDeck(); }; gifImg.src = anim;
+    }
+  }catch(e){ console.warn('Lanyard lookup failed', e); }
+}
+
+function layout(){
+  W = page.clientWidth; H = page.clientHeight;
+  DPR = Math.min(devicePixelRatio || 1, 1.5);
+  paintHero(); layoutRing(); buildSprites(); renderRing(performance.now());
+}
+(async ()=>{
+  await Promise.all([document.fonts.load('900 100px Figtree'), document.fonts.load('700 10px Figtree'), document.fonts.load('48px "tabler-icons"'), loadAssets(), kanekiReady]);
+  await document.fonts.ready;
+  layout(); loadProfile(true); setInterval(()=>loadProfile(false), 30000);
+  let rt; addEventListener('resize', ()=>{ clearTimeout(rt); rt = setTimeout(layout, 150); });
+})();
+</script>
+  </body>
+</html>
