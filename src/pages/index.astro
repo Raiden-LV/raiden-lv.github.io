@@ -62,6 +62,20 @@
   .note.f{font-size:9.5px;font-weight:700;letter-spacing:.16em;line-height:1.45;text-transform:uppercase;opacity:.75}
   .note.f b{display:block;font-size:8px;letter-spacing:.24em;opacity:.55;margin-bottom:2px}
   .note.r{text-align:right;transform-origin:right top}
+  #factsRow{display:none;position:absolute;left:6%;right:6%;z-index:3;text-align:center;font-size:8.5px;font-weight:700;letter-spacing:.2em;
+    line-height:1.7;text-transform:uppercase;color:var(--bone);opacity:.7;pointer-events:none}
+
+  /* phones: smaller notes, tighter controls */
+  @media (max-width: 640px){
+    #factsRow{display:block}
+    .note{max-width:150px}
+    .note.q{font-size:13px}
+    .note.f{font-size:8.5px}
+    .ctrl{bottom:14px;gap:8px}
+    .navs{gap:30px}
+    .nav{width:46px;height:46px}
+    .pfp{top:3.5%;width:58px}
+  }
 
   /* Discord pfp, top-right: just the avatar and what you're doing */
   .pfp{position:absolute;right:4%;top:5%;z-index:60;width:clamp(64px,6vw,84px);aspect-ratio:1;display:block}
@@ -76,6 +90,7 @@
 <section id="page">
   <canvas id="hero" aria-hidden="true"></canvas>
   <div id="notes"></div>
+  <div id="factsRow" aria-hidden="true"></div>
   <h1 class="sr-only">KZR, also Suki, Minky and Pudding</h1>
 
   <canvas id="deck" aria-hidden="true"></canvas>
@@ -113,10 +128,13 @@ const CARDS = [
 ];
 
 /* scattered notes: quotes and facts.
-   type q = quote, f = fact. x/y are % of the screen; right:true anchors to the right edge. r = rotation in degrees. */
+   type q = quote, f = fact. x/y are % of the screen; right:true anchors to the right edge. r = rotation in degrees.
+   m = where a quote goes on phones (same fields); quotes without an m are hidden on phones.
+   On phones the facts are shown together as one small row under the subtitle. */
 const NOTES = [
   /* in the red */
-  {type:"q", x:5,  y:9,  r:-4, text:"Paranoid anxiety,<br>prescriptions always fill my mouth."},
+  {type:"q", x:5,  y:9,  r:-4, text:"Paranoid anxiety,<br>prescriptions always fill my mouth.",
+     m:{x:5, y:6, r:-3}},
   {type:"f", x:17, y:27, r:3,  label:"Fact 01", text:"Age 21"},
   {type:"f", x:6,  y:20, r:5,  right:true, label:"Fact 02", text:"From Latvia"},
   {type:"q", x:13, y:31, r:-3, right:true, text:"Life's simple: you make choices<br>and you don't look back."},
@@ -129,13 +147,21 @@ const NOTES = [
   {type:"f", x:6,  y:85, r:-3, right:true, label:"Fact 05", text:"He / him"},
 ];
 /* =================================================================== */
-document.getElementById('notes').innerHTML = NOTES.map(n=>{
-  const pos = `${n.right ? 'right' : 'left'}:${n.x}%;top:${n.y}%;--r:${n.r}deg`;
-  const cls = `note ${n.type}${n.right ? ' r' : ''}`;
-  return n.type === 'q'
-    ? `<blockquote class="${cls}" style="${pos};margin:0">“${n.text}”${n.by ? `<cite>— ${n.by.toUpperCase()}</cite>` : ''}</blockquote>`
-    : `<div class="${cls}" style="${pos}"><b>${n.label}</b>${n.text}</div>`;
-}).join('');
+const phone = matchMedia('(max-width: 640px)');
+function renderNotes(){
+  document.getElementById('notes').innerHTML = NOTES.map(n=>{
+    const p = phone.matches ? n.m : n;
+    if (!p) return '';
+    const pos = `${p.right ? 'right' : 'left'}:${p.x}%;top:${p.y}%;--r:${p.r}deg`;
+    const cls = `note ${n.type}${p.right ? ' r' : ''}`;
+    return n.type === 'q'
+      ? `<blockquote class="${cls}" style="${pos};margin:0">“${n.text}”${n.by ? `<cite>— ${n.by.toUpperCase()}</cite>` : ''}</blockquote>`
+      : `<div class="${cls}" style="${pos}"><b>${n.label}</b>${n.text}</div>`;
+  }).join('');
+  document.getElementById('factsRow').innerHTML = NOTES.filter(n=>n.type==='f').map(n=>n.text).join(' &nbsp;·&nbsp; ');
+}
+renderNotes();
+phone.addEventListener('change', renderNotes);
 
 const C = {ink:"#0A0A0B", bone:"#F2EEE8", red:"#6E1F22", hot:"#DE3E42"};
 const SKIN = {           /* top, bottom, ink, edge */
@@ -173,7 +199,8 @@ function paintHero(){
   c.fillStyle = C.red; c.fillRect(0,0,W,cut); c.fillStyle = C.ink; c.fillRect(0,cut,W,H-cut);
 
   /* type metrics (same proportions as before: big KZR centred on the cut, subtitle underneath) */
-  const fs = Math.max(110, Math.min(H*0.25, 300)), subFs = Math.max(11, Math.min(W*0.011, 14));
+  /* KZR is ~1.9x as wide as its font size, so on narrow screens it's capped by width to stay on screen */
+  const fs = Math.min(Math.max(110, Math.min(H*0.25, 300)), W*0.44), subFs = Math.max(10, Math.min(W*0.011, 14));
   const blockH = fs*0.8 + 14 + subFs*1.25, top = cut - blockH*0.58;
   c.font = `900 ${fs}px Figtree`; c.letterSpacing = `${fs*0.02}px`; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
   const m = c.measureText('KZR'), capH = m.actualBoundingBoxAscent;
@@ -197,6 +224,8 @@ function paintHero(){
   /* 4. subtitle */
   c.font = `700 ${subFs}px Figtree`; c.letterSpacing = `${subFs*0.5}px`; c.fillStyle = C.bone; c.globalAlpha = .85;
   c.textBaseline = 'top'; c.fillText(SUB, W/2 + subFs*0.25, top + fs*0.8 + 14); c.globalAlpha = 1;
+  /* phones: the facts sit as one small centred row just under the subtitle */
+  document.getElementById("factsRow").style.top = Math.round(top + fs*0.8 + 14 + subFs*1.9 + 8) + "px";
   /* 5. grain, baked in */
   c.setTransform(1,0,0,1,0,0);
   c.globalCompositeOperation = 'overlay'; c.globalAlpha = .28;
@@ -277,8 +306,8 @@ function buildSprites(){
 
 /* ---------- ring in the black, under KZR ---------- */
 function layoutRing(){
-  ch = Math.min(H*0.25, 280, W*0.42); cw = ch*0.72;
-  cx = W/2; cy = H*1.1; R = H*0.42;
+  ch = phone.matches ? Math.min(H*0.2, W*0.4) : Math.min(H*0.25, 280, W*0.42); cw = ch*0.72;
+  cx = W/2; cy = H*(phone.matches ? 1.15 : 1.1); R = H*0.42;
   step = (cw*0.86)/R;
   deckTop = Math.max(0, cy - R - ch*0.8 - 30);
   deck.style.top = deckTop+'px'; deck.style.height = (H - deckTop)+'px';
