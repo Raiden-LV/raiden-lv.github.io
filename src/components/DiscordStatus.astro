@@ -1,0 +1,138 @@
+---
+// Live Discord presence via Lanyard (https://github.com/Phineas/lanyard).
+// Uses the WebSocket API so status/Spotify updates appear without a refresh.
+interface Props {
+  userId: string;
+}
+
+const { userId } = Astro.props;
+---
+
+{
+  userId ? (
+    <discord-status data-user-id={userId} class="status" aria-live="polite">
+      <span class="dot" data-state="offline" />
+      <span class="text">Connecting…</span>
+    </discord-status>
+  ) : (
+    <p class="status hint">
+      Set <code>discordId</code> in <code>src/data/profile.ts</code> to show live Discord status.
+    </p>
+  )
+}
+
+<script>
+  type Presence = {
+    discord_status: "online" | "idle" | "dnd" | "offline";
+    listening_to_spotify: boolean;
+    spotify: { song: string; artist: string } | null;
+    activities: { type: number; name: string; details?: string; state?: string }[];
+  };
+
+  const LABELS: Record<Presence["discord_status"], string> = {
+    online: "Online",
+    idle: "Idle",
+    dnd: "Do not disturb",
+    offline: "Offline",
+  };
+
+  class DiscordStatus extends HTMLElement {
+    private ws?: WebSocket;
+    private heartbeat?: number;
+    private retry = 1000;
+
+    connectedCallback() {
+      this.connect();
+    }
+
+    disconnectedCallback() {
+      clearInterval(this.heartbeat);
+      this.ws?.close();
+    }
+
+    private connect() {
+      const id = this.dataset.userId!;
+      const ws = (this.ws = new WebSocket("wss://api.lanyard.rest/socket"));
+
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        // op 1 = Hello: start heartbeats and subscribe to our user
+        if (msg.op === 1) {
+          this.retry = 1000;
+          clearInterval(this.heartbeat);
+          this.heartbeat = window.setInterval(
+            () => ws.send(JSON.stringify({ op: 3 })),
+            msg.d.heartbeat_interval,
+          );
+          ws.send(JSON.stringify({ op: 2, d: { subscribe_to_id: id } }));
+        }
+        // op 0 = Event: INIT_STATE or PRESENCE_UPDATE
+        if (msg.op === 0) this.render(msg.d as Presence);
+      };
+
+      ws.onclose = () => {
+        clearInterval(this.heartbeat);
+        if (!this.isConnected) return;
+        setTimeout(() => this.connect(), this.retry);
+        this.retry = Math.min(this.retry * 2, 30000);
+      };
+    }
+
+    private render(p: Presence) {
+      const dot = this.querySelector<HTMLElement>(".dot")!;
+      const text = this.querySelector<HTMLElement>(".text")!;
+      dot.dataset.state = p.discord_status;
+
+      // type 0 = Playing, ignore custom status (type 4) and Spotify (type 2)
+      const game = p.activities.find((a) => a.type === 0);
+
+      if (p.listening_to_spotify && p.spotify) {
+        text.textContent = `Listening to ${p.spotify.song} — ${p.spotify.artist}`;
+      } else if (game) {
+        text.textContent = `Playing ${game.name}`;
+      } else {
+        text.textContent = LABELS[p.discord_status];
+      }
+    }
+  }
+
+  customElements.define("discord-status", DiscordStatus);
+</script>
+
+<style>
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    font-size: var(--text-sm);
+    color: var(--muted);
+    max-width: 100%;
+  }
+  .text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--offline);
+  }
+  .dot[data-state="online"] { background: var(--online); }
+  .dot[data-state="idle"] { background: var(--idle); }
+  .dot[data-state="dnd"] { background: var(--dnd); }
+  .hint {
+    border-style: dashed;
+    border-radius: var(--radius);
+  }
+  code {
+    font-family: var(--font-mono);
+    color: var(--text);
+  }
+</style>
